@@ -1,0 +1,21 @@
+{
+  "name": "api-finder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "api-finder": "./src/main.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test 'test/*.test.ts'",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}

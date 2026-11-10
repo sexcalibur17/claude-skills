@@ -1,13 +1,13 @@
 ---
 name: api-finder
 description: Find free/public third-party APIs for a feature or side project by searching API Atlas, public-apis, freepublicapis.com and APIs.guru. Use when the user needs a data source or external API ("is there an API for X", "find a free weather API", "какое API взять для ...", "найди публичное API").
-allowed-tools: Bash(${CLAUDE_SKILL_DIR}/cli.ts *)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/cli/src/main.ts *)
 ---
 
 Run:
 
 ```bash
-${CLAUDE_SKILL_DIR}/cli.ts <keywords> [--no-auth] [--https] [--cors] [--limit N] [--source api-atlas|public-apis|free-public-apis|apis-guru] [--refresh]
+${CLAUDE_PLUGIN_ROOT}/cli/src/main.ts <keywords> [--no-auth] [--https] [--cors] [--limit N] [--source api-atlas|public-apis|free-public-apis|apis-guru] [--refresh]
 ```
 
 - Query = short English keywords (`weather forecast`, `recipes`, `currency exchange`). Translate non-English requests. Try synonyms if results are thin.
