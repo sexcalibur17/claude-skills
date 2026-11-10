@@ -1,0 +1,8 @@
+{
+  "name": "api-finder",
+  "version": "0.1.0",
+  "description": "Search public API catalogs (public-apis, freepublicapis.com, APIs.guru) from Claude Code",
+  "author": { "name": "Aliaksei Sushkevich" },
+  "repository": "https://github.com/sexcalibur17/claude-skills",
+  "license": "MIT"
+}
