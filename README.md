@@ -12,7 +12,7 @@ Personal Claude Code plugin marketplace. Plugins are enabled per project, so not
 
 | Plugin | What |
 |---|---|
-| `api-finder` | Search public API catalogs (public-apis, freepublicapis.com, APIs.guru) → deduped, ranked JSON. Needs Node ≥ 22.18 (runs TS natively). |
+| `api-finder` | Search public API catalogs (API Atlas, public-apis, freepublicapis.com, APIs.guru) → deduped, ranked JSON. Needs Node ≥ 22.18 (runs TS natively). |
 
 ## Dev
 

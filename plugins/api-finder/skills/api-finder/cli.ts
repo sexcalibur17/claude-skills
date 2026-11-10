@@ -21,20 +21,44 @@ export type Api = {
 const CACHE_DIR = join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'api-finder');
 const TTL_MS = 24 * 60 * 60 * 1000;
 
+async function get(url: string): Promise<string> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+  return res.text();
+}
+
+// API Atlas caps a page at 2000 → walk the opaque cursor, cache all pages as one JSON array.
+async function getAtlas(): Promise<string> {
+  const all: unknown[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = JSON.parse(
+      await get(`https://www.atlasapi.space/api/v1/catalog?type=api&limit=2000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
+    );
+    all.push(...page.entries);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return JSON.stringify(all);
+}
+
 const PROVIDERS = {
   'public-apis': {
-    url: 'https://raw.githubusercontent.com/public-apis/public-apis/master/README.md',
+    get: () => get('https://raw.githubusercontent.com/public-apis/public-apis/master/README.md'),
     parse: parsePublicApis,
   },
   'free-public-apis': {
-    url: 'https://www.freepublicapis.com/api/apis?limit=10000',
+    get: () => get('https://www.freepublicapis.com/api/apis?limit=10000'),
     parse: parseFreePublicApis,
   },
   'apis-guru': {
-    url: 'https://api.apis.guru/v2/list.json',
+    get: () => get('https://api.apis.guru/v2/list.json'),
     parse: parseApisGuru,
   },
-} satisfies Record<string, { url: string; parse: (raw: string) => Api[] }>;
+  'api-atlas': {
+    get: getAtlas,
+    parse: parseApiAtlas,
+  },
+} satisfies Record<string, { get: () => Promise<string>; parse: (raw: string) => Api[] }>;
 type ProviderName = keyof typeof PROVIDERS;
 
 // ---------- providers ----------
@@ -47,7 +71,9 @@ export function parsePublicApis(md: string): Api[] {
     if (h) { category = h[1].trim(); continue; }
     const m = line.match(/^\|\s*\[([^\]]+)\]\(([^)]+)\)\s*\|(.*)\|\s*$/);
     if (!m || !category) continue;
-    const [desc = '', auth = '', https = '', cors = ''] = m[3].split('|').map((c) => c.trim());
+    const cells = m[3].split('|').map((c) => c.trim());
+    if (cells.length < 4) continue; // promo tables (e.g. "Best sellers" w/ Postman buttons) lack auth/https/cors
+    const [desc, auth, https, cors] = cells;
     out.push({
       name: m[1].trim(),
       description: desc,
@@ -85,11 +111,34 @@ export function parseApisGuru(json: string): Api[] {
     return {
       name: info.title ?? id,
       description: stripHtml(info.description ?? '').slice(0, 300),
-      url: info.contact?.url || `https://${domain}`,
+      url: `https://${domain}`, // provider domain; also what api-atlas uses for its apis.guru mirror → dedupes
       auth: 'unknown',
       https: true,
       categories: info['x-apisguru-categories'] ?? [],
       sources: ['apis-guru'],
+    };
+  });
+}
+
+export function parseApiAtlas(json: string): Api[] {
+  const rows: Array<{
+    name: string; tagline?: string | null; description?: string | null; category?: string | null; tags?: string[] | null;
+    auth?: string | null; cors?: string | null; docsUrl?: string | null; baseUrl?: string | null; slug: string;
+  }> = JSON.parse(json);
+  return rows.map((r) => {
+    // apis.guru-mirrored rows point docsUrl at a raw spec file; baseUrl is the real provider host.
+    const docs = r.docsUrl && !r.docsUrl.includes('apis.guru') ? r.docsUrl : '';
+    const url = docs || r.baseUrl || `https://www.atlasapi.space/apis/${r.slug}/`;
+    const cors = r.cors?.toLowerCase();
+    return {
+      name: r.name,
+      description: stripHtml(r.description || r.tagline || '').slice(0, 300),
+      url,
+      auth: r.auth === 'unknown' || !r.auth ? 'unknown' : normAuth(r.auth === 'None' ? 'no' : r.auth.replace(/\s+/g, '')),
+      https: url.startsWith('https://') || undefined,
+      cors: cors === 'yes' ? true : cors === 'no' ? false : undefined,
+      categories: [...new Set([r.category, ...(r.tags ?? [])].filter((c): c is string => !!c))],
+      sources: ['api-atlas'],
     };
   });
 }
@@ -169,9 +218,7 @@ async function load(name: ProviderName, refresh: boolean): Promise<Api[]> {
   if (fresh && !refresh) raw = await readFile(file, 'utf8');
   else {
     try {
-      const res = await fetch(PROVIDERS[name].url, { signal: AbortSignal.timeout(30_000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      raw = await res.text();
+      raw = await PROVIDERS[name].get();
       await mkdir(CACHE_DIR, { recursive: true });
       await writeFile(file, raw);
     } catch (e) {
@@ -193,7 +240,7 @@ async function load(name: ProviderName, refresh: boolean): Promise<Api[]> {
 const HELP = `Usage: api-finder <query...> [options]
 
 Options:
-  --no-auth          only APIs that need no auth (known from public-apis)
+  --no-auth          only APIs known to need no auth
   --https            only HTTPS APIs
   --cors             only APIs with CORS enabled (browser-callable)
   --source <name>    restrict to provider (repeatable): ${Object.keys(PROVIDERS).join(', ')}
